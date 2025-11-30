@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#667eea">
+    <title>Almuerzos QR</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; margin: 0; padding: 4px; overscroll-behavior-y: contain; }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .btn { transition: transform 0.1s; }
+        .btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+<div id="app" class="max-w-2xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden my-2">
+    
+    <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white">
+        <h1 class="text-2xl font-bold text-center">🍽️ Almuerzos QR</h1>
+        <p class="text-center text-xs text-indigo-200 mt-1">Android Local</p>
+    </div>
+
+    <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-4 m-4 rounded-xl shadow-lg text-center">
+        <p class="text-xs opacity-90">Almuerzos Hoy</p>
+        <p id="count" class="text-5xl font-black mt-1">0</p>
+        <p id="date" class="text-xs opacity-75 mt-1"></p>
+    </div>
+
+    <div class="p-4">
+        
+        <div id="reader" class="mb-4 hidden"></div>
+        
+        <div id="status" class="mb-4 p-3 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
+            <p class="text-blue-800 text-sm font-semibold flex items-center">
+                <span class="inline-block w-2 h-2 bg-blue-500 rounded-full mr-2 pulse"></span>
+                <span id="status-text">Sistema listo</span>
+            </p>
+        </div>
+
+        <div id="result" class="hidden mb-4">
+            <div class="flex justify-center mb-3">
+                <div id="icon" class="w-20 h-20 rounded-full flex items-center justify-center shadow-lg"></div>
+            </div>
+            <div id="message" class="text-center p-3 rounded-lg font-bold text-lg"></div>
+            <p id="name" class="text-center text-xl font-bold text-gray-700 mt-2"></p>
+        </div>
+
+        <div class="space-y-2 mb-4">
+            <button id="startBtn" class="btn w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg flex items-center justify-center">
+                <span class="mr-2">▶️</span> Iniciar Escáner
+            </button>
+            
+            <button id="stopBtn" class="btn hidden w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg flex items-center justify-center">
+                <span class="mr-2">⏹️</span> Detener Escáner
+            </button>
+
+            <button id="manualBtn" class="btn w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg flex items-center justify-center">
+                <span class="mr-2">✏️</span> Registro Manual
+            </button>
+
+            <button id="exportBtn" class="btn w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow flex items-center justify-center">
+                <span class="mr-2">💾</span> Exportar Datos
+            </button>
+
+            <button id="resetBtn" class="btn w-full bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg shadow flex items-center justify-center">
+                <span class="mr-2">🔄</span> Resetear Día
+            </button>
+        </div>
+
+        <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="font-bold text-gray-700 text-sm">📋 Actividad</h3>
+                <button id="clearLog" class="text-xs text-red-600 font-semibold">Limpiar</button>
+            </div>
+            <div id="log" class="space-y-1 max-h-40 overflow-y-auto text-xs">
+                <p class="text-gray-400 italic">Sin actividad...</p>
+            </div>
+        </div>
+
+        <div class="mt-3 text-center text-xs text-gray-400">
+            <p>v2.1 | 💾 Almacenamiento Local</p>
+        </div>
+
+    </div>
+</div>
+
+<div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-5">
+        <h3 class="text-xl font-bold text-gray-800 mb-3">Registro Manual</h3>
+        <input type="text" id="manualInput" placeholder="ID Empleado (ej: 1001)" class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg mb-3 text-base focus:border-indigo-500 focus:outline-none">
+        <div class="flex gap-2">
+            <button id="submitManual" class="btn flex-1 bg-green-600 text-white font-bold py-2 rounded-lg">Registrar</button>
+            <button id="cancelManual" class="btn flex-1 bg-gray-300 text-gray-800 font-bold py-2 rounded-lg">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const EMPLOYEES = {
+    "1001": "Juan Pérez Cárdenas",
+    "1002": "Ana María Sánchez",
+    "1003": "Pedro Morales García",
+    "1004": "Marta Gil Rojas",
+    "1005": "Carlos Ruiz Méndez",
+    "1006": "Diana Ortiz Cruz",
+    "1007": "Jorge Suárez Pinto",
+    "1008": "Claudia Vega Torres"
+};
+
+let scanner = null;
+let scanning = false;
+
+const $ = id => document.getElementById(id);
+
+function today() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function formatDate(str) {
+    const [y,m,d] = str.split('-');
+    const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    return `${d} ${months[parseInt(m)-1]} ${y}`;
+}
+
+function formatTime(ts) {
+    return new Date(ts).toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+function sound(type) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = type === 'ok' ? 800 : 200;
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + (type === 'ok' ? 0.1 : 0.3));
+    } catch(e) {}
+}
+
+function vibrate(pattern) {
+    if('vibrate' in navigator) navigator.vibrate(pattern);
+}
+
+function log(msg, type='info') {
+    const container = $('log');
+    const entry = document.createElement('div');
+    entry.className = `p-2 rounded ${type==='ok'?'bg-green-100 text-green-800':type==='err'?'bg-red-100 text-red-800':'bg-gray-100 text-gray-700'}`;
+    const time = new Date().toLocaleTimeString('es-CO');
+    entry.innerHTML = `<span class="font-mono">[${time}]</span> ${msg}`;
+    if(container.children.length && container.children[0].textContent.includes('Sin actividad')) container.innerHTML = '';
+    container.insertBefore(entry, container.firstChild);
+    if(container.children.length > 15) container.removeChild(container.lastChild);
+}
+
+function init() {
+    if(!localStorage.getItem('employees')) {
+        localStorage.setItem('employees', JSON.stringify(EMPLOYEES));
+        log('✓ DB inicializada', 'ok');
+    }
+}
+
+function getEmployees() {
+    return JSON.parse(localStorage.getItem('employees') || '{}');
+}
+
+function getRecords() {
+    return JSON.parse(localStorage.getItem(`lunches_${today()}`) || '[]');
+}
+
+function saveRecords(records) {
+    localStorage.setItem(`lunches_${today()}`, JSON.stringify(records));
+}
+
+function updateCount() {
+    $('count').textContent = getRecords().length;
+}
+
+function resetDay() {
+    if(!confirm('⚠️ ¿Resetear contador de hoy?')) return;
+    localStorage.removeItem(`lunches_${today()}`);
+    updateCount();
+    log('⚠️ Día reseteado', 'err');
+    showFeedback('idle');
+}
+
+function exportData() {
+    try {
+        const data = {
+            employees: getEmployees(),
+            today: getRecords(),
+            date: today(),
+            exported: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `almuerzos_${today()}.json`;
+        a.click();
+        log(`✓ Exportados ${data.today.length} registros`, 'ok');
+        alert(`✅ ${data.today.length} registros exportados`);
+    } catch(e) {
+        log(`❌ Error: ${e.message}`, 'err');
+    }
+}
+
+function register(id) {
+    try {
+        const employees = getEmployees();
+        const records = getRecords();
+        const name = employees[id] || `ID Desconocido (${id})`;
+        
+        if(records.some(r => r.id === id)) {
+            sound('err');
+            vibrate([100,50,100,50,100]);
+            showFeedback('err', name, '¡ERROR! Ya almorzó hoy');
+            log(`❌ Duplicado: ${name} (${id})`, 'err');
+            setTimeout(() => {
+                if(scanning) {
+                    showFeedback('idle');
+                    if(scanner) scanner.resume();
+                }
+            }, 5000);
+            return false;
+        }
+        
+        records.push({ id, name, timestamp: Date.now() });
+        saveRecords(records);
+        
+        sound('ok');
+        vibrate([50,100,50]);
+        showFeedback('ok', name, '¡Éxito! Registrado');
+        log(`✓ ${name} (${id})`, 'ok');
+        updateCount();
+        
+        setTimeout(() => {
+            if(scanning) {
+                showFeedback('idle');
+                if(scanner) scanner.resume();
+            }
+        }, 3000);
+        
+        return true;
+    } catch(e) {
+        sound('err');
+        showFeedback('err', 'ERROR', 'Fallo del sistema');
+        log(`❌ ${e.message}`, 'err');
+        return false;
+    }
+}
+
+function showFeedback(type, name='', msg='') {
+    const result = $('result');
+    const icon = $('icon');
+    const message = $('message');
+    const nameEl = $('name');
+    
+    if(type === 'idle') {
+        result.classList.add('hidden');
+        updateStatus('scan', '🔍 Escaneando...');
+        return;
+    }
+    
+    result.classList.remove('hidden');
+    updateStatus('ready', '✓ Listo');
+    
+    if(type === 'ok') {
+        icon.className = 'w-20 h-20 rounded-full flex items-center justify-center shadow-lg bg-green-500';
+        icon.innerHTML = '<svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>';
+        message.className = 'text-center p-3 rounded-lg font-bold text-lg bg-green-100 text-green-800';
+        message.textContent = msg;
+        nameEl.textContent = name;
+    } else if(type === 'err') {
+        icon.className = 'w-20 h-20 rounded-full flex items-center justify-center shadow-lg bg-red-500';
+        icon.innerHTML = '<svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>';
+        message.className = 'text-center p-3 rounded-lg font-bold text-lg bg-red-100 text-red-800';
+        message.textContent = msg;
+        nameEl.textContent = name;
+    }
+}
+
+function updateStatus(type, msg) {
+    const div = $('status');
+    const text = $('status-text');
+    div.className = 'mb-4 p-3 rounded-lg border-l-4';
+    
+    if(type === 'scan') {
+        div.classList.add('bg-blue-50','border-blue-500');
+        text.innerHTML = `<span class="inline-block w-2 h-2 bg-blue-500 rounded-full mr-2 pulse"></span>${msg}`;
+    } else if(type === 'err') {
+        div.classList.add('bg-red-50','border-red-500');
+        text.innerHTML = `<span class="inline-block w-2 h-2 bg-red-500 rounded-full mr-2"></span>${msg}`;
+    } else {
+        div.classList.add('bg-green-50','border-green-500');
+        text.innerHTML = `<span class="inline-block w-2 h-2 bg-green-500 rounded-full mr-2"></span>${msg}`;
+    }
+}
+
+async function start() {
+    try {
+        if(scanning) return;
+        updateStatus('scan', 'Iniciando cámara...');
+        log('🎥 Iniciando...', 'info');
+        
+        $('reader').classList.remove('hidden');
+        $('startBtn').classList.add('hidden');
+        $('stopBtn').classList.remove('hidden');
+        
+        scanner = new Html5Qrcode("reader");
+        await scanner.start(
+            {facingMode:"environment"},
+            {fps:10, qrbox:{width:250,height:250}},
+            (txt) => {
+                if(scanner) scanner.pause(true);
+                register(txt.trim());
+            },
+            () => {}
+        );
+        
+        scanning = true;
+        showFeedback('idle');
+        log('✓ Escáner listo', 'ok');
+    } catch(e) {
+        updateStatus('err', '❌ Error: ' + e.message);
+        log(`❌ ${e.message}`, 'err');
+        $('startBtn').classList.remove('hidden');
+        $('stopBtn').classList.add('hidden');
+        alert('⚠️ Error de cámara.\nVerifique permisos.');
+    }
+}
+
+async function stop() {
+    try {
+        if(!scanning) return;
+        if(scanner) {
+            await scanner.stop();
+            scanner = null;
+        }
+        scanning = false;
+        $('reader').classList.add('hidden');
+        $('startBtn').classList.remove('hidden');
+        $('stopBtn').classList.add('hidden');
+        $('result').classList.add('hidden');
+        updateStatus('ready', '⏸️ Detenido');
+        log('⏸️ Escáner detenido', 'info');
+    } catch(e) {}
+}
+
+function showModal() {
+    $('modal').classList.remove('hidden');
+    $('manualInput').value = '';
+    $('manualInput').focus();
+}
+
+function hideModal() {
+    $('modal').classList.add('hidden');
+}
+
+function submitManual() {
+    const id = $('manualInput').value.trim();
+    if(!id) {
+        alert('⚠️ Ingrese un ID');
+        return;
+    }
+    register(id);
+    hideModal();
+}
+
+$('startBtn').onclick = start;
+$('stopBtn').onclick = stop;
+$('manualBtn').onclick = showModal;
+$('exportBtn').onclick = exportData;
+$('resetBtn').onclick = resetDay;
+$('clearLog').onclick = () => $('log').innerHTML = '<p class="text-gray-400 italic">Sin actividad...</p>';
+$('submitManual').onclick = submitManual;
+$('cancelManual').onclick = hideModal;
+$('manualInput').onkeypress = (e) => { if(e.key==='Enter') submitManual(); };
+
+document.addEventListener('DOMContentLoaded', () => {
+    updateStatus('ready', '✓ Sistema listo');
+    $('date').textContent = formatDate(today());
+    init();
+    updateCount();
+    log('🚀 Sistema iniciado', 'ok');
+    log(`📅 ${formatDate(today())}`, 'info');
+    log(`👥 ${Object.keys(getEmployees()).length} empleados`, 'info');
+});
+</script>
+
+</body>
+</html>

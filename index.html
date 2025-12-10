@@ -69,7 +69,8 @@
     <!-- Carga de la biblioteca de escaneo QR (GLOBALMENTE) -->
     <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
 
-    <script type="module">
+    <!-- ELIMINAMOS TYPE="MODULE" para resolver el error "Html5Qrcode is not defined" -->
+    <script>
         // --- Variables y Utilidades ---
         let html5QrcodeScanner = null;
         let employeeMap = {}; // Mapa { 'QR_ID': 'Nombre Completo' }
@@ -199,6 +200,9 @@
                 localStorage.setItem(EMPLOYEE_MAP_KEY, JSON.stringify(newMap));
                 loadData(); // Recargar datos
                 logActivity(`Base de datos de empleados inicializada con ${Object.keys(newMap).length} registros.`, 'INFO');
+                
+                // INICIAR EL ESCÁNER AUTOMÁTICAMENTE DESPUÉS DE LA INICIALIZACIÓN
+                startQrScanner();
 
             } catch(error) {
                 logActivity(`Error al inicializar empleados: ${error.message}`, 'ERROR');
@@ -367,6 +371,7 @@
                 
                 document.getElementById("reader").innerHTML = '';
                 // Html5Qrcode ya está globalmente disponible
+                // La variable Html5Qrcode ahora es accesible porque eliminamos type="module"
                 html5QrcodeScanner = new Html5Qrcode("reader"); 
                 
                 const config = { 
@@ -385,6 +390,7 @@
                         logActivity(`Error de Html5Qrcode.start: ${err.message}`, 'ERROR');
                     });
             } catch (error) {
+                // Ahora este catch debería ser innecesario gracias al fix, pero se mantiene por robustez.
                 handleCameraError(`Fallo al preparar el escáner: ${error.message}`);
             }
         }
@@ -454,10 +460,10 @@
     <!-- Tarjeta de Contenedor Principal -->
     <div class="w-full max-w-lg bg-white rounded-xl shadow-2xl p-6 md:p-8">
         
-        <!-- Logo de Timaná -->
-        <div class="text-center mb-6">
-            <img src="https://placehold.co/300x70/000000/00A9AE?text=Timan%C3%A1" onerror="this.onerror=null; this.src='https://placehold.co/300x70/000000/00A9AE?text=Timan%C3%A1'" alt="Logo Timaná" class="mx-auto h-12">
-        </div>
+        <!-- Logo de Timaná - Se vuelve a texto simple -->
+        <h1 class="text-3xl font-extrabold text-gray-800 text-center mb-6">
+            Control de Almuerzos Timaná
+        </h1>
 
         <!-- Métrica de Conteo Diario -->
         <div class="bg-timana text-white p-4 rounded-lg shadow-lg mb-8">

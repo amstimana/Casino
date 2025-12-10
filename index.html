@@ -110,7 +110,7 @@
              <!-- Botón de Inicializar Empleados (Solo aparece si no hay empleados cargados) -->
             <button id="init-employees-btn" class="btn-base w-full py-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 focus:outline-none focus:ring-4 focus:ring-green-300 hidden">
                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 inline-block mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.72l.53-.29A2 2 0 0113 7.82V10a1 1 0 001 1h4a1 1 0 001-1V7.82a2 2 0 011.69-1.95l.53-.29m-1.69 1.95L12 9.75l-4.72-2.58A2 2 0 005 7.82V10a1 1 0 001 1h4a1 1 0 001-1V7.82a2 2 0 011.69-1.95z" /></svg>
-                 1. Inicializar DB de Empleados (Mock)
+                 1. Cargar Lista de Empleados (Primer Uso)
             </button>
             
             <div class="flex space-x-3">
@@ -154,12 +154,29 @@
         </div>
     </div>
 
-    <!-- Carga de Bibliotecas de Firebase -->
+    <!-- Carga de Bibliotecas de Firebase y Lógica Principal -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, setDoc, getDoc, collection, getDocs, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Definiciones de funciones de Firebase (IMPORTADAS) para uso en el script global
+        window.initializeApp = initializeApp;
+        window.getAuth = getAuth;
+        window.signInAnonymously = signInAnonymously;
+        window.signInWithCustomToken = signInWithCustomToken;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.getFirestore = getFirestore;
+        window.doc = doc;
+        window.onSnapshot = onSnapshot;
+        window.setDoc = setDoc;
+        window.getDoc = getDoc;
+        window.collection = collection;
+        window.getDocs = getDocs;
+        window.arrayUnion = arrayUnion;
+        window.setLogLevel = setLogLevel;
+
 
         // --- Variables y Configuración de Firebase ---
         let html5QrcodeScanner = null;
@@ -193,7 +210,7 @@
         ];
 
 
-        // --- Funciones de Utilidad ---
+        // --- Funciones de Utilidad (Acceso Global) ---
 
         function getTodayDateId() {
             const today = new Date();
@@ -220,21 +237,22 @@
 
         async function initializeFirebase() {
             try {
+                // Las variables de importación (initializeApp, getAuth, etc.) están ahora en window gracias al módulo
                 setLogLevel('debug');
                 
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
+                app = window.initializeApp(firebaseConfig);
+                db = window.getFirestore(app);
+                auth = window.getAuth(app);
                 
                 logActivity('Paso 1/4: Conectando con Firebase y autenticando...');
                 
                 if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
+                    await window.signInWithCustomToken(auth, initialAuthToken);
                 } else {
-                    await signInAnonymously(auth);
+                    await window.signInAnonymously(auth);
                 }
 
-                onAuthStateChanged(auth, async (user) => {
+                window.onAuthStateChanged(auth, async (user) => {
                     logActivity(`Paso 2/4: Usuario autenticado. UID: ${user ? user.uid : 'Anon'}`);
                     
                     await loadEmployeeData(); // Cargar mapa de empleados
@@ -263,7 +281,7 @@
         
         async function loadEmployeeData() {
             try {
-                const snapshot = await getDocs(employeesCollectionRef(db));
+                const snapshot = await window.getDocs(employeesCollectionRef(db));
                 employeeMap = {};
                 snapshot.forEach(doc => {
                     employeeMap[doc.id] = doc.data().name; 
@@ -282,8 +300,8 @@
                 
                 // Usar Promise.all para subir todos los documentos de forma eficiente
                 await Promise.all(mockEmployees.map(emp => {
-                    const docRef = doc(employeesCollectionRef(db), emp.id);
-                    return setDoc(docRef, { name: emp.name, createdAt: Date.now() }, { merge: true });
+                    const docRef = window.doc(employeesCollectionRef(db), emp.id);
+                    return window.setDoc(docRef, { name: emp.name, createdAt: Date.now() }, { merge: true });
                 }));
 
                 await loadEmployeeData(); // Recargar datos para que el escáner funcione.
@@ -299,7 +317,7 @@
         function setupRealtimeCounter() {
             if (!db) return;
 
-            const unsub = onSnapshot(dailyLunchesRef(db), (docSnapshot) => {
+            const unsub = window.onSnapshot(dailyLunchesRef(db), (docSnapshot) => {
                 // Contamos el número de registros en el array 'records'
                 const total = docSnapshot.exists() ? (docSnapshot.data().records || []).length : 0;
                 document.getElementById('lunch-count').textContent = total;
@@ -316,7 +334,7 @@
                 const employeeName = employeeMap[employeeId] || `ID Desconocido (${employeeId})`;
                 logActivity(`Intento de registro para ID: ${employeeId} (${source})`);
 
-                const docSnap = await getDoc(dailyLunchesRef(db));
+                const docSnap = await window.getDoc(dailyLunchesRef(db));
                 const records = docSnap.exists() ? docSnap.data().records || [] : [];
                 
                 // 1. Verificar Duplicidad (buscando el ID en el array records)
@@ -336,9 +354,9 @@
                     source: source
                 };
                 
-                await setDoc(dailyLunchesRef(db), {
+                await window.setDoc(dailyLunchesRef(db), {
                     // Usamos arrayUnion para agregar el nuevo registro al array 'records'
-                    records: arrayUnion(newRecord) 
+                    records: window.arrayUnion(newRecord) 
                 }, { merge: true });
 
                 handleFeedback('GREEN', `¡Éxito! ${employeeName} registrado.`, employeeName, true);
@@ -517,6 +535,7 @@
 
         // --- Arranque ---
 
+        // La función initializeFirebase y sus dependencias (como initializeApp) son ahora globales.
         window.onload = initializeFirebase;
         
         document.addEventListener('DOMContentLoaded', () => {

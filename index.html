@@ -154,63 +154,33 @@
         </div>
     </div>
 
-    <!-- Carga de Bibliotecas de Firebase y Lógica Principal -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc, getDoc, collection, getDocs, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Definiciones de funciones de Firebase (IMPORTADAS) para uso en el script global
-        window.initializeApp = initializeApp;
-        window.getAuth = getAuth;
-        window.signInAnonymously = signInAnonymously;
-        window.signInWithCustomToken = signInWithCustomToken;
-        window.onAuthStateChanged = onAuthStateChanged;
-        window.getFirestore = getFirestore;
-        window.doc = doc;
-        window.onSnapshot = onSnapshot;
-        window.setDoc = setDoc;
-        window.getDoc = getDoc;
-        window.collection = collection;
-        window.getDocs = getDocs;
-        window.arrayUnion = arrayUnion;
-        window.setLogLevel = setLogLevel;
-
-
-        // --- Variables y Configuración de Firebase ---
+    <!-- JavaScript Principal - Colocado al final del body para garantizar la carga de librerías -->
+    <script>
+        // --- Variables y Utilidades ---
         let html5QrcodeScanner = null;
         let employeeMap = {}; // Mapa { 'QR_ID': 'Nombre Completo' }
         let currentDayRecords = []; // Registros del día (solo para visualización en el cliente)
-
-        // Variables globales del Canvas (necesarias para Firestore)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
         
-        let app;
-        let db;
-        let auth;
-
-        // Referencias a colecciones/documentos
-        const todayDocId = getTodayDateId();
-        const dailyLunchesRef = (db) => doc(db, `artifacts/${appId}/public/data/daily_lunches`, todayDocId);
-        const employeesCollectionRef = (db) => collection(db, `artifacts/${appId}/public/data/employees`);
-
-        // Objetos de Audio (Pequeños y rápidos)
-        const audioSuccess = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPUVNUVHMgdi0zLjEwMFdVUUFBQ0NBQUFBQ0NBQUFBQUFDMExBTUUALAAAA2QCAAfAABYAM8iIAAAJ4gAEi4gABdYgAIi4gAhdYgAWi4gApZygAWi4gANVAgABdYgAEi4gAtdYgAIi4gAtdYgAWi4gAtdYgAtdYgAtdYgASi4gATdYgAIi4gAH/4hQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w4gQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w='); // Tono corto de éxito
-        const audioError = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPUVNUVHMgdi0zLjEwMFdVUUFBQ0NBQUFBQ0NBQUFBQUFDMExBTUUALAAAA2QCAAfAABYAM8iIAAAJ4gAEi4gABdYgAIi4gAhdYgAWi4gApZygAWi4gANVAgABdYgAEi4gAtdYgAIi4gAtdYgAWi4gAtdYgAtdYgAtdYgASi4gATdYgAIi4gAH/4hQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w4gQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w='); // Tono corto de error
-
-        // Mock data de ejemplo (para la carga inicial en Firebase, si es necesario)
+        const EMPLOYEE_MAP_KEY = 'employee_map'; // Clave para la BD de empleados (permanente)
+        const LAST_DATE_KEY = 'last_record_date'; // Clave para la fecha del último registro
+        let LUNCH_RECORDS_KEY = ''; 
+        
+        // Mock data de ejemplo (para el botón de inicialización - AQUÍ DEBE IR SU LISTA COMPLETA)
         const mockEmployees = [
             { id: "7060626", name: "Marwin Johan Fernandez Fernandez" }, 
             { id: "1001", name: "Juan Cárdenas" },
             { id: "1002", name: "Ana María Sánchez" },
             { id: "1003", name: "Pedro Luis Morales" },
+            { id: "1005", name: "Maria Fernanda Lopez" },
+            { id: "1006", name: "Carlos Eduardo Ramirez" },
         ];
 
+        // Objetos de Audio (Pequeños y rápidos)
+        const audioSuccess = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPUVNUVHMgdi0zLjEwMFdVUUFBQ0NBQUFBQ0NBQUFBQUFDMExBTUUALAAAA2QCAAfAABYAM8iIAAAJ4gAEi4gABdYgAIi4gAhdYgAWi4gApZygAWi4gANVAgABdYgAEi4gAtdYgAIi4gAtdYgAWi4gAtdYgAtdYgAtdYgASi4gATdYgAIi4gAH/4hQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w4gQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w='); // Tono corto de éxito
+        const audioError = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPUVNUVHMgdi0zLjEwMFdVUUFBQ0NBQUFBQ0NBQUFBQUFDMExBTUUALAAAA2QCAAfAABYAM8iIAAAJ4gAEi4gABdYgAIi4gAhdYgAWi4gApZygAWi4gANVAgABdYgAEi4gAtdYgAIi4gAtdYgAWi4gAtdYgAtdYgAtdYgASi4gATdYgAIi4gAH/4hQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w4gQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w='); // Tono corto de error
 
-        // --- Funciones de Utilidad (Acceso Global) ---
+
+        // --- Funciones de Utilidad ---
 
         function getTodayDateId() {
             const today = new Date();
@@ -233,112 +203,110 @@
             }
         }
         
-        // --- Inicialización de Firebase y Auth ---
-
-        async function initializeFirebase() {
+        // --- Lógica de Almacenamiento (localStorage) ---
+        
+        /**
+         * Se ejecuta al cargar la app. Borra los registros de ayer y carga los de hoy.
+         * Simula el "borrado a medianoche".
+         */
+        function checkAndClearOldRecords() {
             try {
-                // Las variables de importación (initializeApp, getAuth, etc.) están ahora en window gracias al módulo
-                setLogLevel('debug');
+                const todayId = getTodayDateId();
+                const lastDate = localStorage.getItem(LAST_DATE_KEY);
                 
-                app = window.initializeApp(firebaseConfig);
-                db = window.getFirestore(app);
-                auth = window.getAuth(app);
+                // 1. Si la última fecha no existe o es anterior a hoy, borramos los registros antiguos.
+                if (lastDate && lastDate !== todayId) {
+                    logActivity(`Fecha anterior detectada (${lastDate}). Limpiando registros antiguos...`, 'INFO');
+                    localStorage.removeItem(`lunch_records_${lastDate}`);
+                    logActivity(`Registros de ${lastDate} eliminados.`, 'INFO');
+                }
                 
-                logActivity('Paso 1/4: Conectando con Firebase y autenticando...');
+                // 2. Establecer las claves para el día de hoy
+                localStorage.setItem(LAST_DATE_KEY, todayId);
+                LUNCH_RECORDS_KEY = `lunch_records_${todayId}`;
+
+            } catch (error) {
+                logActivity(`Error en la limpieza diaria: ${error.message}`, 'ERROR');
+            }
+        }
+        
+        function loadData() {
+            try {
+                // 0. Revisar y limpiar registros de días anteriores
+                checkAndClearOldRecords();
+
+                // 1. Cargar Mapa de Empleados (Es permanente)
+                const employeeJson = localStorage.getItem(EMPLOYEE_MAP_KEY);
+                employeeMap = employeeJson ? JSON.parse(employeeJson) : {};
                 
-                if (initialAuthToken) {
-                    await window.signInWithCustomToken(auth, initialAuthToken);
+                // 2. Cargar Registros Diarios (Para la clave del día de hoy)
+                const recordsJson = localStorage.getItem(LUNCH_RECORDS_KEY);
+                currentDayRecords = recordsJson ? JSON.parse(recordsJson) : [];
+                
+                logActivity(`Datos cargados. Empleados: ${Object.keys(employeeMap).length}. Registros de hoy: ${currentDayRecords.length}`);
+                updateDisplay();
+
+                // Mostrar/Ocultar el botón de inicialización
+                const initBtn = document.getElementById('init-employees-btn');
+                if (Object.keys(employeeMap).length === 0) {
+                     initBtn.classList.remove('hidden');
                 } else {
-                    await window.signInAnonymously(auth);
+                     initBtn.classList.add('hidden');
                 }
 
-                window.onAuthStateChanged(auth, async (user) => {
-                    logActivity(`Paso 2/4: Usuario autenticado. UID: ${user ? user.uid : 'Anon'}`);
-                    
-                    await loadEmployeeData(); // Cargar mapa de empleados
-                    setupRealtimeCounter();  // Iniciar escucha del contador
-                    
-                    logActivity('Paso 3/4: Datos cargados. Iniciando escáner...');
-                    
-                    // Solo intentar iniciar el escáner si la carga de datos fue exitosa
-                    if (Object.keys(employeeMap).length > 0) {
-                         startQrScanner();
-                    } else {
-                         // Mostrar botón de inicialización si no hay empleados cargados.
-                         document.getElementById('init-employees-btn').classList.remove('hidden');
-                         handleFeedback('LOADING', 'Paso 4/4: Presione el botón verde para cargar la lista de empleados (primera vez).');
-                    }
-                });
-
             } catch (error) {
-                logActivity(`Error CRÍTICO de Firebase: ${error.message}`, 'ERROR');
-                document.getElementById('status-message').textContent = 'Error CRÍTICO de Firebase. Verifique la consola.';
-                document.getElementById('status-message').className = 'text-center text-red-700 text-lg font-bold p-4 bg-red-100 rounded-lg shadow-md';
+                logActivity(`Error al cargar datos de localStorage: ${error.message}`, 'ERROR');
             }
         }
 
-        // --- Lógica de Datos (Firestore) ---
-        
-        async function loadEmployeeData() {
+        function saveData() {
             try {
-                const snapshot = await window.getDocs(employeesCollectionRef(db));
-                employeeMap = {};
-                snapshot.forEach(doc => {
-                    employeeMap[doc.id] = doc.data().name; 
-                });
-                logActivity(`Mapa de Empleados cargado: ${Object.keys(employeeMap).length} registros.`);
+                // Solo guardamos los registros del día
+                localStorage.setItem(LUNCH_RECORDS_KEY, JSON.stringify(currentDayRecords));
+                localStorage.setItem(LAST_DATE_KEY, getTodayDateId()); // Actualizar fecha de último registro
+                logActivity(`Registros guardados. Total: ${currentDayRecords.length}`);
             } catch (error) {
-                logActivity(`Error al cargar mapa de empleados: ${error.message}`, 'ERROR');
-                // Si falla, el botón de inicialización permanecerá visible.
+                logActivity(`Error al guardar registros en localStorage: ${error.message}`, 'ERROR');
             }
         }
         
-        // Función para inicializar la BD de empleados (MOCK - se debe usar solo una vez)
-        async function initializeEmployeeData() {
+        // Función para inicializar la BD de empleados (solo para el primer uso o actualización)
+        function initializeEmployeeData() {
             try {
-                logActivity('Inicializando DB de Empleados con datos de ejemplo (MOCK)...');
+                logActivity('Inicializando DB de Empleados con datos de ejemplo...');
+                // Convertir el array de mock data a un mapa {id: name}
+                const newMap = mockEmployees.reduce((acc, emp) => {
+                    acc[emp.id] = emp.name;
+                    return acc;
+                }, {});
+
+                // ESTE PASO SIMULA LA CARGA DE SUS 120 EMPLEADOS DESDE SU LISTA INTERNA
+                localStorage.setItem(EMPLOYEE_MAP_KEY, JSON.stringify(newMap));
+                loadData(); // Recargar datos
+                logActivity(`Base de datos de empleados inicializada con ${Object.keys(newMap).length} registros.`, 'INFO');
                 
-                // Usar Promise.all para subir todos los documentos de forma eficiente
-                await Promise.all(mockEmployees.map(emp => {
-                    const docRef = window.doc(employeesCollectionRef(db), emp.id);
-                    return window.setDoc(docRef, { name: emp.name, createdAt: Date.now() }, { merge: true });
-                }));
-
-                await loadEmployeeData(); // Recargar datos para que el escáner funcione.
-                logActivity('Base de datos de empleados inicializada con éxito.', 'INFO');
-                startQrScanner(); // Iniciar el escáner inmediatamente
+                // INICIAR EL ESCÁNER AUTOMÁTICAMENTE DESPUÉS DE LA INICIALIZACIÓN
+                startQrScanner();
 
             } catch(error) {
                 logActivity(`Error al inicializar empleados: ${error.message}`, 'ERROR');
-                handleFeedback('RED', `Error al inicializar DB de empleados.`, 'N/A', false);
             }
         }
 
-        function setupRealtimeCounter() {
-            if (!db) return;
+        // --- Lógica de Registro y Verificación ---
 
-            const unsub = window.onSnapshot(dailyLunchesRef(db), (docSnapshot) => {
-                // Contamos el número de registros en el array 'records'
-                const total = docSnapshot.exists() ? (docSnapshot.data().records || []).length : 0;
-                document.getElementById('lunch-count').textContent = total;
-            }, (error) => {
-                logActivity(`Error al escuchar el contador: ${error.message}`, 'ERROR');
-            });
-            // La función unsub se podría usar para detener la escucha si fuera necesario.
+        function updateDisplay() {
+            document.getElementById('lunch-count').textContent = currentDayRecords.length;
         }
 
-        async function registerLunch(employeeId, source = 'QR') {
+        function registerLunch(employeeId, source = 'QR') {
             try {
-                if (!db) throw new Error("Database no está inicializada.");
-                
+                employeeId = String(employeeId).trim();
                 const employeeName = employeeMap[employeeId] || `ID Desconocido (${employeeId})`;
                 logActivity(`Intento de registro para ID: ${employeeId} (${source})`);
 
-                const docSnap = await window.getDoc(dailyLunchesRef(db));
-                const records = docSnap.exists() ? docSnap.data().records || [] : [];
-                
-                // 1. Verificar Duplicidad (buscando el ID en el array records)
-                const isDuplicate = records.some(record => record.id === employeeId);
+                // 2.2. Verificar Duplicidad
+                const isDuplicate = currentDayRecords.some(record => record.id === employeeId);
                 
                 if (isDuplicate) {
                     handleFeedback('RED', `¡ERROR! ${employeeName} ya almorzó hoy.`, employeeName, false);
@@ -346,30 +314,31 @@
                     return false;
                 }
 
-                // 2. Crear y Registrar Nuevo Registro
+                // 2.3. Es el primer escaneo: Registrar y actualizar array
+                const newTimestamp = Date.now();
                 const newRecord = {
                     id: employeeId,
                     name: employeeName,
-                    timestamp: Date.now(),
+                    timestamp: newTimestamp,
                     source: source
                 };
-                
-                await window.setDoc(dailyLunchesRef(db), {
-                    // Usamos arrayUnion para agregar el nuevo registro al array 'records'
-                    records: window.arrayUnion(newRecord) 
-                }, { merge: true });
+
+                currentDayRecords.push(newRecord);
+                saveData(); // Guardar en localStorage
+                updateDisplay(); // Actualizar contador
 
                 handleFeedback('GREEN', `¡Éxito! ${employeeName} registrado.`, employeeName, true);
+                logActivity(`Registro exitoso para ${employeeName} a las ${new Date(newTimestamp).toLocaleTimeString()}`, 'INFO');
                 return true;
 
             } catch (error) {
                 logActivity(`Error fatal en registerLunch: ${error.message}`, 'ERROR');
-                handleFeedback('RED', `Error en la base de datos: ${error.message}`, 'N/A', false);
+                handleFeedback('RED', `Error al registrar: ${error.message}`, 'N/A', false);
                 return false;
             }
         }
 
-        // --- Lógica del Escáner y Feedback ---
+        // --- Lógica del Escáner y Feedback Sensorial ---
 
         function playFeedback(isSuccess) {
             try {
@@ -477,7 +446,7 @@
         // Inicializar el escáner QR
         async function startQrScanner() {
             try {
-                handleFeedback('LOADING', 'Paso 3/4: Iniciando cámara...');
+                handleFeedback('LOADING', 'Paso 3/3: Iniciando cámara...');
                 await stopQrScanner();
                 
                 document.getElementById("reader").innerHTML = '';
@@ -509,6 +478,10 @@
             document.getElementById('manual-register-modal').classList.remove('hidden');
             document.getElementById('manual-id-input').value = '';
             document.getElementById('manual-id-input').focus();
+            document.getElementById('manual-result-text').textContent = 'Ingrese el ID para registrar.'; // Reset message
+            document.getElementById('manual-result-text').classList.remove('text-red-600');
+            document.getElementById('manual-result-text').classList.add('text-gray-700');
+
             if (html5QrcodeScanner && html5QrcodeScanner.getState() === 2) {
                  html5QrcodeScanner.pause(); 
             }
@@ -535,17 +508,31 @@
 
         // --- Arranque ---
 
-        // La función initializeFirebase y sus dependencias (como initializeApp) son ahora globales.
-        window.onload = initializeFirebase;
-        
-        document.addEventListener('DOMContentLoaded', () => {
+        function initializeApp() {
+            logActivity('Paso 1/3: Iniciando aplicación OFFLINE (localStorage)...');
+            
+            loadData(); // Cargar la BD de empleados y los registros del día
+            
+            logActivity('Paso 2/3: Datos cargados. Iniciando escáner...');
+            
+            // Asignar Event Listeners
             document.getElementById('restart-scanner-btn').onclick = startQrScanner;
             document.getElementById('init-employees-btn').onclick = initializeEmployeeData;
             document.getElementById('manual-register-btn').onclick = showManualRegisterModal;
             document.getElementById('manual-register-submit').onclick = submitManualRegistration;
             document.getElementById('manual-register-close').onclick = closeManualRegisterModal;
-        });
+            
+            // Si hay datos de empleados, iniciar el escáner inmediatamente
+            if (Object.keys(employeeMap).length > 0) {
+                 startQrScanner();
+            } else {
+                 handleFeedback('LOADING', 'Paso 3/3: Listo para inicializar. Presione el botón verde.');
+            }
+        }
 
+        // Ejecutar la inicialización una vez que la página esté completamente cargada.
+        window.onload = initializeApp;
+        
     </script>
 </body>
 </html>

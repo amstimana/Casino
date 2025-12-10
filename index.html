@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Almuerzos OFFLINE</title>
+    <!-- Carga de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos generales para asegurar que la app se vea bien en el móvil */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        #reader {
+            width: 100%;
+            max-width: 400px; /* Tamaño máximo del área de escaneo */
+            margin-bottom: 1rem;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        /* Asegura que el lector de QR ocupe el espacio */
+        #reader > div {
+            width: 100% !important;
+        }
+        .btn-base {
+            transition: all 0.2s;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        /* Estilos para el Log de Actividad */
+        #activity-log {
+            height: 100px;
+            overflow-y: scroll;
+            font-family: monospace;
+            font-size: 0.75rem;
+        }
+        /* Estilo para el modal de registro manual */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        /* Color principal de la marca (Azul/Cian de Timaná) */
+        .bg-timana {
+            background-color: #00A9AE; /* Color aproximado del logo */
+        }
+        .hover\:bg-timana-dark:hover {
+            background-color: #00878a;
+        }
+        .focus\:ring-timana-light:focus {
+            --tw-ring-color: #00A9AE;
+        }
+    </style>
+    
+    <!-- Carga de la biblioteca de escaneo QR (GLOBALMENTE) -->
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+
+    <script type="module">
+        // --- Variables y Utilidades ---
+        let html5QrcodeScanner = null;
+        let employeeMap = {}; // Mapa { 'QR_ID': 'Nombre Completo' }
+        let currentDayRecords = []; // Registros del día
+        
+        const EMPLOYEE_MAP_KEY = 'employee_map'; // Clave para la BD de empleados (permanente)
+        const LAST_DATE_KEY = 'last_record_date'; // Clave para la fecha del último registro
+        
+        // La clave de registros diarios ahora usa la fecha actual para la limpieza
+        let LUNCH_RECORDS_KEY = ''; 
+        
+        // Mock data de ejemplo (para el botón de inicialización)
+        const mockEmployees = [
+            { id: "7060626", name: "Marwin Johan Fernandez Fernandez" }, // Usando el CC de la foto de ejemplo
+            { id: "1001", name: "Juan Cárdenas" },
+            { id: "1002", name: "Ana María Sánchez" },
+            { id: "1003", name: "Pedro Luis Morales" },
+            { id: "1005", name: "Maria Fernanda Lopez" },
+            { id: "1006", name: "Carlos Eduardo Ramirez" },
+        ];
+
+        // Objetos de Audio (Pequeños y rápidos)
+        const audioSuccess = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPUVNUVHMgdi0zLjEwMFdVUUFBQ0NBQUFBQ0NBQUFBQUFDMExBTUUALAAAA2QCAAfAABYAM8iIAAAJ4gAEi4gABdYgAIi4gAhdYgAWi4gApZygAWi4gANVAgABdYgAEi4gAtdYgAIi4gAtdYgAWi4gAtdYgAtdYgAtdYgASi4gATdYgAIi4gAH/4hQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w4gQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w='); // Tono corto de éxito
+        const audioError = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPUVNUVHMgdi0zLjEwMFdVUUFBQ0NBQUFBQ0NBQUFBQUFDMExBTUUALAAAA2QCAAfAABYAM8iIAAAJ4gAEi4gABdYgAIi4gAhdYgAWi4gApZygAWi4gANVAgABdYgAEi4gAtdYgAIi4gAtdYgAWi4gAtdYgAtdYgAtdYgASi4gATdYgAIi4gAH/4hQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w4gQ/oW/7T+g/o+f7T/g/o9/7T8g/o7/7T+w/o5/7T8Q/o2/7T8Q/o0/7T8w/o7/7T/Q/o6/7T/Q/o9/7T+g/o8/7T/w/o8/7T8w/o+f7T/Q/o/f7T/g/o3/7T+g/o5/7T8w/o9/7T/w/o6/7T/Q/o7/7T/w/o6/7T/Q/o9/7T/w/o2/7T/Q/o/f7T+g/o3/7T8w/o8/7T/g/o7/7T+g/o5/7T/w='); // Tono corto de error
+
+        function getTodayDateId() {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function logActivity(message, level = 'INFO') {
+            const logDiv = document.getElementById('activity-log');
+            const now = new Date().toLocaleTimeString('es-CO');
+            const entry = document.createElement('p');
+            entry.textContent = `[${now}] [${level}] ${message}`;
+            entry.className = level === 'ERROR' ? 'text-red-600' : level === 'WARN' ? 'text-yellow-600' : 'text-gray-700';
+            
+            // Añadir al inicio para ver lo más reciente
+            logDiv.prepend(entry);
+            // Asegurar que no haya demasiados logs
+            while (logDiv.children.length > 50) {
+                logDiv.removeChild(logDiv.lastChild);
+            }
+        }
+        
+        // --- Lógica de Almacenamiento (localStorage) ---
+        
+        /**
+         * Se ejecuta al cargar la app. Borra los registros de ayer y carga los de hoy.
+         */
+        function checkAndClearOldRecords() {
+            try {
+                const todayId = getTodayDateId();
+                const lastDate = localStorage.getItem(LAST_DATE_KEY);
+                
+                // 1. Si la última fecha no existe o es anterior a hoy, borramos los registros antiguos.
+                if (lastDate && lastDate !== todayId) {
+                    logActivity(`Fecha anterior detectada (${lastDate}). Limpiando registros antiguos...`, 'INFO');
+                    // Almacenamos los registros borrados antes de eliminarlos (opcional, para auditoría)
+                    // localStorage.setItem(`archived_records_${lastDate}`, localStorage.getItem(LUNCH_RECORDS_KEY)); 
+                    localStorage.removeItem(`lunch_records_${lastDate}`);
+                    logActivity(`Registros de ${lastDate} eliminados.`, 'INFO');
+                }
+                
+                // 2. Establecer las claves para el día de hoy
+                localStorage.setItem(LAST_DATE_KEY, todayId);
+                LUNCH_RECORDS_KEY = `lunch_records_${todayId}`;
+
+            } catch (error) {
+                logActivity(`Error en la limpieza diaria: ${error.message}`, 'ERROR');
+            }
+        }
+        
+        function loadData() {
+            try {
+                // 0. Revisar y limpiar registros de días anteriores
+                checkAndClearOldRecords();
+
+                // 1. Cargar Mapa de Empleados (Es permanente)
+                const employeeJson = localStorage.getItem(EMPLOYEE_MAP_KEY);
+                employeeMap = employeeJson ? JSON.parse(employeeJson) : {};
+                
+                // 2. Cargar Registros Diarios (Para la clave del día de hoy)
+                const recordsJson = localStorage.getItem(LUNCH_RECORDS_KEY);
+                currentDayRecords = recordsJson ? JSON.parse(recordsJson) : [];
+                
+                logActivity(`Datos cargados. Empleados: ${Object.keys(employeeMap).length}. Registros de hoy: ${currentDayRecords.length}`);
+                updateDisplay();
+
+                // Mostrar/Ocultar el botón de inicialización
+                const initBtn = document.getElementById('init-employees-btn');
+                if (Object.keys(employeeMap).length === 0) {
+                     initBtn.classList.remove('hidden');
+                } else {
+                     initBtn.classList.add('hidden');
+                }
+
+            } catch (error) {
+                logActivity(`Error al cargar datos de localStorage: ${error.message}`, 'ERROR');
+            }
+        }
+
+        function saveData() {
+            try {
+                // Solo guardamos los registros del día
+                localStorage.setItem(LUNCH_RECORDS_KEY, JSON.stringify(currentDayRecords));
+                localStorage.setItem(LAST_DATE_KEY, getTodayDateId()); // Actualizar fecha de último registro
+                logActivity(`Registros guardados. Total: ${currentDayRecords.length}`);
+            } catch (error) {
+                logActivity(`Error al guardar registros en localStorage: ${error.message}`, 'ERROR');
+            }
+        }
+        
+        // Función para inicializar la BD de empleados (solo para el primer uso o actualización)
+        function initializeEmployeeData() {
+            try {
+                logActivity('Inicializando DB de Empleados con datos de ejemplo...');
+                // Convertir el array de mock data a un mapa {id: name}
+                const newMap = mockEmployees.reduce((acc, emp) => {
+                    acc[emp.id] = emp.name;
+                    return acc;
+                }, {});
+
+                localStorage.setItem(EMPLOYEE_MAP_KEY, JSON.stringify(newMap));
+                loadData(); // Recargar datos
+                logActivity(`Base de datos de empleados inicializada con ${Object.keys(newMap).length} registros.`, 'INFO');
+
+            } catch(error) {
+                logActivity(`Error al inicializar empleados: ${error.message}`, 'ERROR');
+            }
+        }
+
+        // --- Lógica de Registro y Verificación ---
+
+        function updateDisplay() {
+            document.getElementById('lunch-count').textContent = currentDayRecords.length;
+        }
+
+        function registerLunch(employeeId, source = 'QR') {
+            try {
+                employeeId = String(employeeId).trim();
+                const employeeName = employeeMap[employeeId] || `ID Desconocido (${employeeId})`;
+                logActivity(`Intento de registro para ID: ${employeeId} (${source})`);
+
+                // 2.2. Verificar Duplicidad
+                const isDuplicate = currentDayRecords.some(record => record.id === employeeId);
+                
+                if (isDuplicate) {
+                    handleFeedback('RED', `¡ERROR! ${employeeName} ya almorzó hoy.`, employeeName, false);
+                    logActivity(`Registro duplicado detectado: ${employeeId}`, 'WARN');
+                    return false;
+                }
+
+                // 2.3. Es el primer escaneo: Registrar y actualizar array
+                const newTimestamp = Date.now();
+                const newRecord = {
+                    id: employeeId,
+                    name: employeeName,
+                    timestamp: newTimestamp,
+                    source: source
+                };
+
+                currentDayRecords.push(newRecord);
+                saveData(); // Guardar en localStorage
+                updateDisplay(); // Actualizar contador
+
+                handleFeedback('GREEN', `¡Éxito! ${employeeName} registrado.`, employeeName, true);
+                logActivity(`Registro exitoso para ${employeeName} a las ${new Date(newTimestamp).toLocaleTimeString()}`, 'INFO');
+                return true;
+
+            } catch (error) {
+                logActivity(`Error fatal en registerLunch: ${error.message}`, 'ERROR');
+                handleFeedback('RED', `Error al registrar: ${error.message}`, 'N/A', false);
+                return false;
+            }
+        }
+
+        // --- Lógica del Escáner y Feedback Sensorial ---
+
+        function playFeedback(isSuccess) {
+            try {
+                if (navigator.vibrate) {
+                    navigator.vibrate(isSuccess ? 200 : [100, 50, 100]);
+                }
+                const audio = isSuccess ? audioSuccess : audioError;
+                audio.play();
+            } catch(e) {
+                logActivity("Error al reproducir audio o vibración.", 'WARN');
+            }
+        }
+
+        function handleFeedback(color, message, employeeName = 'N/A', autoResume = false) {
+            const statusDiv = document.getElementById('status-message');
+            const iconDiv = document.getElementById('result-icon');
+            const nameDisplay = document.getElementById('employee-name-display');
+            const restartBtn = document.getElementById('restart-scanner-btn');
+
+            // Limpieza y configuración de estados
+            statusDiv.className = 'text-center p-4 rounded-lg shadow-md transition-all duration-300 ease-in-out';
+            iconDiv.className = 'flex items-center justify-center w-32 h-32 mx-auto rounded-full transition-all duration-300 ease-in-out';
+            iconDiv.innerHTML = '';
+            restartBtn.classList.add('hidden');
+            
+            nameDisplay.textContent = employeeName; 
+            
+            if (color === 'GREEN') {
+                statusDiv.classList.add('bg-green-100', 'text-green-800', 'font-bold');
+                iconDiv.classList.add('bg-green-500');
+                iconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="white" class="w-20 h-20"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>';
+                playFeedback(true);
+            } else if (color === 'RED') {
+                statusDiv.classList.add('bg-red-100', 'text-red-800', 'font-bold');
+                iconDiv.classList.add('bg-red-500');
+                iconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="white" class="w-20 h-20"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>';
+                restartBtn.classList.remove('hidden');
+                playFeedback(false);
+            } else if (color === 'IDLE') {
+                statusDiv.classList.add('bg-gray-100', 'text-gray-500');
+                iconDiv.classList.add('bg-gray-300');
+                iconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-20 h-20"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zm-7.5 0h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zM3.75 9.75h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zm-7.5 0h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zM3.75 14.625h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zm-7.5 0h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zM3.75 19.5h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zm-7.5 0h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008z" /></svg>';
+                nameDisplay.textContent = 'En espera de escaneo...';
+            } else if (color === 'LOADING') {
+                statusDiv.classList.add('bg-yellow-100', 'text-yellow-800', 'font-bold');
+                iconDiv.classList.add('bg-yellow-300', 'animate-pulse');
+                iconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-20 h-20"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>';
+            }
+
+            statusDiv.textContent = message;
+            
+            if (autoResume && html5QrcodeScanner) {
+                setTimeout(() => {
+                    if (html5QrcodeScanner.getState() === 3) { // 3 = Paused
+                         handleFeedback('IDLE', 'Escaneando... Presente el código QR del carnet.');
+                         html5QrcodeScanner.resume();
+                    }
+                }, 3000);
+            }
+        }
+        
+        async function stopQrScanner() {
+            try {
+                if (html5QrcodeScanner && html5QrcodeScanner.getState() === 2) {
+                    await html5QrcodeScanner.stop();
+                    logActivity("Escáner detenido.");
+                }
+            } catch (err) {
+                // Esto es común si se detiene un escáner que ya está detenido
+                logActivity(`Error al detener el escáner (no crítico): ${err.message}`, 'WARN');
+            }
+        }
+
+        // Función principal de escaneo
+        function onScanSuccess(decodedText, decodedResult) {
+            try {
+                // Pausar inmediatamente al escanear
+                if (html5QrcodeScanner) html5QrcodeScanner.pause();
+                
+                const employeeId = decodedText.trim();
+                const employeeName = employeeMap[employeeId] || `ID Desconocido (${employeeId})`;
+                
+                handleFeedback('IDLE', 'Procesando registro...', employeeName);
+                
+                registerLunch(employeeId, 'QR');
+            } catch (error) {
+                logActivity(`Fallo en onScanSuccess: ${error.message}`, 'ERROR');
+                handleCameraError('Fallo interno al procesar el código.');
+            }
+        }
+        
+        // Manejador de errores de la cámara con reinicio automático
+        function handleCameraError(errorMessage) {
+            logActivity(`ERROR CÁMARA: ${errorMessage}`, 'ERROR');
+            handleFeedback('RED', `ERROR: ${errorMessage}`, 'N/A', false); // No reanudar automáticamente
+            document.getElementById('restart-scanner-btn').classList.remove('hidden');
+
+            // Reinicio automático después de 5 segundos
+            setTimeout(() => {
+                const statusText = document.getElementById('status-message').textContent;
+                // Solo intentar reiniciar si el estado actual es un error de cámara
+                if (statusText.includes("ERROR") && !statusText.includes("Duplicado")) {
+                    logActivity("Intentando reinicio automático de la cámara...", 'INFO');
+                    startQrScanner();
+                }
+            }, 5000); 
+        }
+
+        // Inicializar el escáner QR
+        async function startQrScanner() {
+            try {
+                handleFeedback('LOADING', 'Paso 3/3: Iniciando cámara...');
+                await stopQrScanner();
+                
+                document.getElementById("reader").innerHTML = '';
+                // Html5Qrcode ya está globalmente disponible
+                html5QrcodeScanner = new Html5Qrcode("reader"); 
+                
+                const config = { 
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    disableFlip: false
+                };
+
+                // Iniciar el escáner forzando la cámara de entorno (trasera)
+                html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
+                    .then(() => {
+                        handleFeedback('IDLE', 'Escaneando... Presente el código QR del carnet.');
+                    })
+                    .catch(err => {
+                        handleCameraError('No se pudo acceder a la cámara. Revise permisos.');
+                        logActivity(`Error de Html5Qrcode.start: ${err.message}`, 'ERROR');
+                    });
+            } catch (error) {
+                handleCameraError(`Fallo al preparar el escáner: ${error.message}`);
+            }
+        }
+
+        // --- Lógica de Registro Manual (Modal) ---
+        
+        function showManualRegisterModal() {
+            document.getElementById('manual-register-modal').classList.remove('hidden');
+            document.getElementById('manual-id-input').value = '';
+            document.getElementById('manual-id-input').focus();
+            if (html5QrcodeScanner && html5QrcodeScanner.getState() === 2) {
+                 html5QrcodeScanner.pause(); // Pausar si la cámara está activa
+            }
+        }
+        
+        function closeManualRegisterModal() {
+            document.getElementById('manual-register-modal').classList.add('hidden');
+            if (html5QrcodeScanner && html5QrcodeScanner.getState() === 3) {
+                 html5QrcodeScanner.resume(); // Reanudar si estaba pausada
+            }
+        }
+
+        function submitManualRegistration() {
+            const id = document.getElementById('manual-id-input').value.trim();
+            if (!id) {
+                // Reemplazando alert()
+                document.getElementById('manual-result-text').textContent = 'Error: Ingrese el código ID.';
+                document.getElementById('manual-result-text').classList.remove('text-gray-700');
+                document.getElementById('manual-result-text').classList.add('text-red-600');
+                return;
+            }
+            registerLunch(id, 'MANUAL');
+            closeManualRegisterModal();
+        }
+
+
+        // --- Event Listeners y Arranque ---
+
+        function initializeApp() {
+            logActivity('Paso 1/3: Iniciando aplicación OFFLINE...');
+            
+            loadData(); // Cargar la BD de empleados y los registros del día
+            
+            logActivity('Paso 2/3: Datos cargados. Iniciando escáner...');
+            
+            // Asignar Event Listeners
+            document.getElementById('restart-scanner-btn').onclick = startQrScanner;
+            document.getElementById('init-employees-btn').onclick = initializeEmployeeData;
+            document.getElementById('manual-register-btn').onclick = showManualRegisterModal;
+            document.getElementById('manual-register-submit').onclick = submitManualRegistration;
+            document.getElementById('manual-register-close').onclick = closeManualRegisterModal;
+            
+            // Si hay datos de empleados, iniciar el escáner inmediatamente
+            if (Object.keys(employeeMap).length > 0) {
+                 startQrScanner();
+            } else {
+                 handleFeedback('LOADING', 'Paso 3/3: Listo para inicializar. Pulse el botón verde.');
+            }
+        }
+
+        window.onload = initializeApp;
+
+    </script>
+</head>
+<body class="bg-gray-50 p-4">
+
+    <!-- Tarjeta de Contenedor Principal -->
+    <div class="w-full max-w-lg bg-white rounded-xl shadow-2xl p-6 md:p-8">
+        
+        <!-- Logo de Timaná -->
+        <div class="text-center mb-6">
+            <img src="https://placehold.co/300x70/000000/00A9AE?text=Timan%C3%A1" onerror="this.onerror=null; this.src='https://placehold.co/300x70/000000/00A9AE?text=Timan%C3%A1'" alt="Logo Timaná" class="mx-auto h-12">
+        </div>
+
+        <!-- Métrica de Conteo Diario -->
+        <div class="bg-timana text-white p-4 rounded-lg shadow-lg mb-8">
+            <p class="text-sm font-medium opacity-80">Almuerzos Registrados Hoy</p>
+            <p id="lunch-count" class="text-5xl font-black text-right mt-1">0</p>
+        </div>
+
+        <!-- Área del Escáner QR -->
+        <div id="reader" class="mb-6"></div>
+
+        <!-- Nombre del Empleado -->
+        <p id="employee-name-display" class="text-xl font-semibold text-center text-gray-700 h-8 mb-4">
+            En espera de escaneo...
+        </p>
+
+        <!-- Indicador de Resultado (Icono Grande) -->
+        <div id="result-icon" class="flex items-center justify-center w-32 h-32 mx-auto rounded-full bg-gray-300 transition-all duration-300 ease-in-out">
+            <!-- Icono de escáner por defecto (se rellena con JS) -->
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-20 h-20"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zm-7.5 0h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zM3.75 9.75h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zm-7.5 0h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zM3.75 14.625h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zm-7.5 0h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zM3.75 19.5h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008zm-7.5 0h.007v.008h-.007v-.008zm11.25 0h.007v.008h-.007v-.008z" /></svg>
+        </div>
+        
+        <!-- Mensaje de Estado (Feedback/Loading) -->
+        <div id="status-message" class="text-center p-4 rounded-lg mt-4 bg-gray-100 text-gray-500 font-medium transition-all duration-300 ease-in-out">
+            Iniciando sistema...
+        </div>
+
+        <!-- Botones de Utilidad -->
+        <div class="mt-6 space-y-3">
+             <!-- Botón de Inicializar Empleados (Solo aparece si no hay empleados cargados) -->
+            <button id="init-employees-btn" class="btn-base w-full py-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 focus:outline-none focus:ring-4 focus:ring-green-300 hidden">
+                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 inline-block mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.72l.53-.29A2 2 0 0113 7.82V10a1 1 0 001 1h4a1 1 0 001-1V7.82a2 2 0 011.69-1.95l.53-.29m-1.69 1.95L12 9.75l-4.72-2.58A2 2 0 005 7.82V10a1 1 0 001 1h4a1 1 0 001-1V7.82a2 2 0 011.69-1.95z" /></svg>
+                 1. Inicializar DB de Empleados (Mock)
+            </button>
+            
+            <div class="flex space-x-3">
+                 <!-- Botón de Registro Manual -->
+                <button id="manual-register-btn" class="btn-base w-1/2 py-3 bg-timana text-white font-bold rounded-lg hover:bg-timana-dark focus:outline-none focus:ring-4 focus:ring-timana-light">
+                    Reg. Manual
+                </button>
+
+                 <!-- Botón de Reinicio para solucionar problemas de cámara -->
+                <button id="restart-scanner-btn" class="btn-base w-1/2 py-3 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 focus:outline-none focus:ring-4 focus:ring-red-300 hidden">
+                    Reiniciar
+                </button>
+            </div>
+        </div>
+        
+        <!-- Log de Actividad Visible para Debugging -->
+        <div class="mt-4 w-full border border-gray-300 p-2 rounded-lg bg-gray-100">
+            <h3 class="text-xs font-semibold text-gray-600 mb-1">Log de Actividad (Debugging)</h3>
+            <div id="activity-log" class="bg-white p-1 rounded-md">
+                <!-- Los logs se insertan aquí -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Registro Manual -->
+    <div id="manual-register-modal" class="modal hidden">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-11/12 max-w-sm">
+            <h2 class="text-xl font-bold mb-4">Registro Manual</h2>
+            <p class="text-sm text-gray-600 mb-4">Ingrese el código ID del carnet del empleado (solo para emergencias).</p>
+            <input type="text" id="manual-id-input" placeholder="ID del Empleado (Ej: 7060626)" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+            <p id="manual-result-text" class="text-sm text-gray-700 mt-2">Ingrese el ID para registrar.</p>
+
+            <div class="flex justify-end space-x-3 mt-6">
+                <button id="manual-register-close" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">
+                    Cancelar
+                </button>
+                <button id="manual-register-submit" class="px-4 py-2 bg-indigo-500 text-white font-bold rounded-lg hover:bg-indigo-600">
+                    Registrar
+                </button>
+            </div>
+        </div>
+    </div>
+    
+</body>
+</html>
